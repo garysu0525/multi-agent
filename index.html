@@ -264,29 +264,51 @@ const AGENTS = {
 
 let aborted = false;
 let apiKeyValid = false;
+let statusCallback = null; // for showing wait status in UI
 
 function getKey() { return document.getElementById('apiKey').value.trim(); }
 
-async function callClaude(system, userMsg, useSearch) {
+function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function callClaude(system, userMsg, useSearch, retries = 3) {
   const body = { model: 'claude-sonnet-4-20250514', max_tokens: 2048, system, messages: [{ role: 'user', content: userMsg }] };
   if (useSearch) body.tools = [{ type: 'web_search_20250305', name: 'web_search' }];
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-api-key': getKey(), 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-    body: JSON.stringify(body)
-  });
-  if (!res.ok) throw new Error('API ' + res.status + ': ' + (await res.text()).slice(0, 200));
-  const data = await res.json();
-  let text = '', searchUsed = false, citations = [];
-  if (!Array.isArray(data.content)) return { text: String(data.content || ''), searchUsed: false, citations: [] };
-  for (const b of data.content) {
-    if (b.type === 'text') text += b.text || '';
-    if (b.type === 'web_search_tool_result') {
-      searchUsed = true;
-      try { for (const r of (b.content || [])) { if (r.type === 'web_search_result' && r.url) citations.push({ title: r.title || r.url, url: r.url }); } } catch(e) {}
+
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': getKey(), 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify(body)
+    });
+
+    if (res.status === 429) {
+      if (attempt >= retries) throw new Error('API 速率限制：請等 1-2 分鐘後再試');
+      const waitSec = attempt * 15;
+      if (statusCallback) statusCallback('⏳ 速率限制，等待 ' + waitSec + ' 秒後自動重試...');
+      await wait(waitSec * 1000);
+      continue;
     }
+    if (res.status === 529 || res.status === 503) {
+      if (attempt >= retries) throw new Error('API 伺服器忙碌中，請稍後再試');
+      const waitSec = attempt * 10;
+      if (statusCallback) statusCallback('⏳ 伺服器忙碌，等待 ' + waitSec + ' 秒...');
+      await wait(waitSec * 1000);
+      continue;
+    }
+    if (!res.ok) throw new Error('API ' + res.status + ': ' + (await res.text()).slice(0, 200));
+
+    const data = await res.json();
+    let text = '', searchUsed = false, citations = [];
+    if (!Array.isArray(data.content)) return { text: String(data.content || ''), searchUsed: false, citations: [] };
+    for (const b of data.content) {
+      if (b.type === 'text') text += b.text || '';
+      if (b.type === 'web_search_tool_result') {
+        searchUsed = true;
+        try { for (const r of (b.content || [])) { if (r.type === 'web_search_result' && r.url) citations.push({ title: r.title || r.url, url: r.url }); } } catch(e) {}
+      }
+    }
+    return { text: text || '(無回覆)', searchUsed, citations };
   }
-  return { text: text || '(無回覆)', searchUsed, citations };
 }
 
 async function testApiKey() {
@@ -404,6 +426,7 @@ async function runAgent(agentId, task, context) {
 
     try {
       if (useSearch) setStatus(agentId, 'searching');
+      statusCallback = (msg) => addLog('think', agentId, msg);
       const result = await callClaude(agent.system, prompt, useSearch);
 
       if (result.searchUsed) {
@@ -418,9 +441,11 @@ async function runAgent(agentId, task, context) {
       fullResult = loop === 1 ? result.text : fullResult + '\n\n---補充---\n' + result.text;
       addLog('result', agentId, result.text.slice(0, 250) + (result.text.length > 250 ? '\n...' : ''), { loop });
       if (!result.searchUsed && loop >= 2) break;
+      // Wait between loops to avoid rate limit
+      if (loop < maxLoops) await wait(3000);
     } catch (err) {
       addLog('error', agentId, '錯誤：' + err.message, { loop });
-      if (loop < maxLoops) { addLog('retry', agentId, '自動重試中...', { loop }); await new Promise(r => setTimeout(r, 1000)); continue; }
+      if (loop < maxLoops) { addLog('retry', agentId, '自動重試中（等待 5 秒）...', { loop }); await wait(5000); continue; }
       if (!fullResult) fullResult = '(' + agent.name + ' 執行時發生錯誤：' + err.message + ')';
       break;
     }
@@ -454,6 +479,7 @@ async function run() {
     // Phase 1: Supervisor
     setStatus('supervisor', 'thinking');
     addLog('think', 'supervisor', '分析任務，制定執行計劃...');
+    statusCallback = (msg) => addLog('think', 'supervisor', msg);
     const { text: planRaw } = await callClaude(AGENTS.supervisor.system, input, false);
     setStatus('supervisor', 'done');
 
@@ -469,23 +495,38 @@ async function run() {
       (plan.reasoning || '已拆解任務') + '\n\n📋 子任務：\n' +
       plan.plan.map((p, i) => (i+1) + '. [' + (AGENTS[p.agent]?.icon || '?') + ' ' + (AGENTS[p.agent]?.name || p.agent) + '] ' + p.task).join('\n'));
 
+    // Wait between calls to avoid rate limit
+    await wait(3000);
+
     // Phase 2: Execute agents
     const results = {};
+    let stepIndex = 0;
     for (const step of plan.plan) {
       if (aborted) break;
       const aid = step.agent;
       if (!AGENTS[aid] || aid === 'supervisor' || aid === 'integrator') continue;
+      if (stepIndex > 0) {
+        addLog('think', aid, '⏳ 等待 5 秒避免速率限制...');
+        await wait(5000);
+      }
       const ctx = Object.entries(results).map(([k, v]) => '【' + AGENTS[k]?.name + '】:\n' + v.text.slice(0, 600)).join('\n---\n');
+      statusCallback = (msg) => addLog('think', aid, msg);
       const result = await runAgent(aid, step.task, ctx);
       results[aid] = result;
       totalLoops += result.loops;
       totalSearches += result.searches;
+      stepIndex++;
     }
     if (aborted) { finish(); return; }
+
+    // Wait before integration
+    addLog('think', 'integrator', '⏳ 等待 5 秒避免速率限制...');
+    await wait(5000);
 
     // Phase 3: Integrate
     setStatus('integrator', 'thinking');
     addLog('think', 'integrator', '整合所有 Agent 的成果...');
+    statusCallback = (msg) => addLog('think', 'integrator', msg);
     const allRes = Object.entries(results).map(([k, v]) => '【' + AGENTS[k]?.name + ' 的成果】:\n' + v.text).join('\n\n---\n\n');
     const { text: final } = await callClaude(AGENTS.integrator.system, '原始任務：' + input + '\n\n各Agent成果：\n' + allRes + '\n\n請整合出完整的最終回覆。', false);
     setStatus('integrator', 'done');
