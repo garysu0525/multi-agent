@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Multi-Agent 協作系統</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #FAF9F6; --bg2: #F0EFEB; --bg3: #E8E7E3;
+  --text: #2C2C2A; --text2: #6B6A66; --text3: #9C9B97;
+  --purple: #534AB7; --purple-bg: #EEEDFE; --purple-border: #AFA9EC;
+  --teal: #0F6E56; --teal-bg: #E1F5EE; --teal-border: #5DCAA5;
+  --coral: #993C1D; --coral-bg: #FAECE7; --coral-border: #F0997B;
+  --blue: #185FA5; --blue-bg: #E6F1FB; --blue-border: #85B7EB;
+  --amber: #BA7517; --amber-bg: #FFF9EE; --amber-border: #F5DCA0;
+  --red: #A32D2D; --red-bg: #FFF5F5; --red-border: #F7C1C1;
+  --green: #0F6E56; --green-bg: #F0FAF5; --green-border: #B8E8D0;
+  --radius: 12px;
+}
+body {
+  font-family: 'Noto Sans TC', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  min-height: 100vh;
+}
+.container { max-width: 760px; margin: 0 auto; padding: 20px 16px; }
+
+/* Header */
+.header { text-align: center; margin-bottom: 24px; }
+.header .badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 14px; border-radius: 20px;
+  background: var(--purple-bg); margin-bottom: 10px;
+}
+.header .badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--teal); }
+.header .badge span { font-size: 10px; font-weight: 700; color: var(--purple); letter-spacing: 1px; }
+.header h1 { font-size: 24px; font-weight: 700; margin-bottom: 4px; }
+.header p { font-size: 13px; color: var(--text3); }
+
+/* API Key Section */
+.api-section {
+  background: #fff; border: 1.5px solid var(--bg3);
+  border-radius: var(--radius); padding: 16px 18px; margin-bottom: 20px;
+}
+.api-section.connected { border-color: var(--green-border); background: var(--green-bg); }
+.api-label { font-size: 12px; font-weight: 700; color: var(--text2); margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+.api-row { display: flex; gap: 8px; }
+.api-input {
+  flex: 1; padding: 8px 12px; font-size: 13px; font-family: monospace;
+  border: 1.5px solid var(--bg3); border-radius: 8px; background: var(--bg);
+  color: var(--text); outline: none; transition: border-color .2s;
+}
+.api-input:focus { border-color: var(--purple); }
+.api-input::placeholder { color: var(--text3); }
+.api-btn {
+  padding: 8px 16px; font-size: 13px; font-weight: 600;
+  font-family: inherit; border: none; border-radius: 8px;
+  cursor: pointer; background: var(--purple); color: #fff; transition: opacity .2s;
+}
+.api-btn:hover { opacity: .85; }
+.api-status { font-size: 12px; margin-top: 8px; color: var(--green); font-weight: 600; }
+.api-status.error { color: var(--red); }
+
+/* Status Bar */
+.status-bar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.status-pill {
+  display: flex; align-items: center; gap: 5px;
+  padding: 4px 10px; border-radius: 8px;
+  font-size: 11px; font-weight: 600; transition: all .3s;
+}
+.status-pill .dot {
+  width: 6px; height: 6px; border-radius: 50%; transition: background .3s;
+}
+.status-pill[data-state="idle"] { background: rgba(0,0,0,.04); color: #aaa; }
+.status-pill[data-state="idle"] .dot { background: #ccc; }
+.status-pill[data-state="thinking"] { background: var(--amber-bg); color: var(--amber); }
+.status-pill[data-state="thinking"] .dot { background: #EF9F27; animation: pulse 1s infinite; }
+.status-pill[data-state="searching"] { background: var(--blue-bg); color: var(--blue); }
+.status-pill[data-state="searching"] .dot { background: var(--blue); animation: pulse 1s infinite; }
+.status-pill[data-state="done"] { background: var(--green-bg); color: var(--green); }
+.status-pill[data-state="done"] .dot { background: var(--green); }
+.status-pill[data-state="error"] { background: var(--red-bg); color: var(--red); }
+.status-pill[data-state="error"] .dot { background: var(--red); }
+
+/* Input */
+.input-area textarea {
+  width: 100%; padding: 12px 14px; font-size: 14px; line-height: 1.6;
+  border: 1.5px solid var(--bg3); border-radius: 10px; resize: vertical;
+  font-family: inherit; background: #fff; color: var(--text); outline: none; transition: border-color .2s;
+}
+.input-area textarea:focus { border-color: var(--purple); }
+.input-area textarea::placeholder { color: var(--text3); }
+.btn-row { display: flex; gap: 8px; margin-top: 8px; }
+.btn-main {
+  flex: 1; padding: 10px 16px; font-size: 14px; font-weight: 700;
+  font-family: inherit; border: none; border-radius: 10px;
+  cursor: pointer; background: var(--purple); color: #fff; transition: all .2s;
+}
+.btn-main:disabled { background: #ccc; cursor: not-allowed; }
+.btn-main:not(:disabled):hover { opacity: .9; }
+.btn-stop {
+  flex: 1; padding: 10px 16px; font-size: 14px; font-weight: 700;
+  font-family: inherit; border: 2px solid var(--red); border-radius: 10px;
+  cursor: pointer; background: #fff; color: var(--red);
+}
+.btn-secondary {
+  padding: 10px 14px; font-size: 13px; font-weight: 600;
+  font-family: inherit; border: 1.5px solid var(--bg3); border-radius: 10px;
+  cursor: pointer; background: #fff; color: var(--text2);
+}
+
+/* Features */
+.features { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin: 16px 0; }
+.feature-card {
+  padding: 10px 12px; border-radius: 10px; background: #fff;
+  border: 1px solid var(--bg3); text-align: center; flex: 1 1 140px; max-width: 170px;
+}
+.feature-card .icon { font-size: 20px; margin-bottom: 2px; }
+.feature-card .label { font-size: 12px; font-weight: 700; color: var(--text); }
+.feature-card .desc { font-size: 10px; color: var(--text3); margin-top: 1px; }
+
+/* Log */
+.log-section { margin: 16px 0; }
+.log-title { font-size: 11px; font-weight: 700; color: var(--text3); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px; }
+.log-scroll { display: flex; flex-direction: column; gap: 6px; max-height: 460px; overflow-y: auto; padding-right: 4px; }
+.log-entry {
+  display: flex; gap: 10px; padding: 10px 12px;
+  border-radius: 10px; animation: slideIn .3s ease-out;
+}
+.log-entry .log-icon { min-width: 22px; text-align: center; font-size: 15px; }
+.log-entry .log-body { flex: 1; min-width: 0; }
+.log-entry .log-meta { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; flex-wrap: wrap; }
+.log-entry .agent-tag {
+  font-size: 10px; font-weight: 700; padding: 1px 8px; border-radius: 10px;
+}
+.log-entry .type-tag { font-size: 10px; color: var(--text3); font-weight: 600; }
+.log-entry .loop-tag { font-size: 10px; color: var(--amber); font-weight: 600; }
+.log-entry .log-text { font-size: 12.5px; line-height: 1.65; color: #444; white-space: pre-wrap; word-break: break-word; }
+.log-entry .citations { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; }
+.log-entry .cite-link {
+  font-size: 10px; color: var(--blue); background: var(--blue-bg);
+  padding: 2px 8px; border-radius: 6px; text-decoration: none;
+  border: 1px solid var(--blue-border); max-width: 220px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block;
+}
+.log-think { background: #f8f7ff; border-left: 3px solid #ddd8ff; }
+.log-plan { background: #fff9ee; border-left: 3px solid var(--amber-border); }
+.log-search { background: #eef6ff; border-left: 3px solid #b0d4f8; }
+.log-result { background: #fafafa; border-left: 3px solid #e0e0e0; }
+.log-error { background: var(--red-bg); border-left: 3px solid var(--red-border); }
+.log-retry { background: #fff5ee; border-left: 3px solid #f8d8b0; }
+.log-done { background: var(--green-bg); border-left: 3px solid var(--green-border); }
+
+/* Stats */
+.stats { display: flex; gap: 8px; margin: 14px 0; justify-content: center; }
+.stat-card {
+  text-align: center; padding: 8px 14px; border-radius: 10px;
+  background: #f8f7ff; border: 1px solid #ebe8ff; flex: 1 1 0;
+}
+.stat-card .stat-icon { font-size: 16px; }
+.stat-card .stat-val { font-size: 17px; font-weight: 700; color: var(--purple); }
+.stat-card .stat-label { font-size: 10px; color: var(--text3); }
+
+/* Final result */
+.final-result {
+  border: 2px solid var(--purple); border-radius: 14px; padding: 16px 18px;
+  background: linear-gradient(135deg, var(--purple-bg) 0%, #fff 50%);
+  animation: slideIn .4s ease-out; margin-bottom: 16px;
+}
+.final-result .final-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.final-result .final-header span:last-child { font-weight: 700; font-size: 15px; color: var(--purple); }
+.final-result .final-body { font-size: 14px; line-height: 1.85; white-space: pre-wrap; word-break: break-word; }
+
+/* Error banner */
+.error-banner {
+  padding: 10px 14px; background: var(--red-bg); border-radius: 10px;
+  color: var(--red); font-size: 12.5px; margin-bottom: 12px; line-height: 1.6;
+  border: 1px solid var(--red-border);
+}
+
+/* Animations */
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+@keyframes slideIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+</style>
+</head>
+<body>
+<div class="container">
+  <!-- Header -->
+  <div class="header">
+    <div class="badge"><span class="dot"></span><span>TOOL USE + REACT LOOP + SELF-CORRECTION</span></div>
+    <h1>多 Agent 協作系統</h1>
+    <p>Agent 會自主搜尋網路、反覆推理驗證、自我修正，每一步思考過程透明可見</p>
+  </div>
+
+  <!-- API Key -->
+  <div class="api-section" id="apiSection">
+    <div class="api-label">🔑 Claude API Key</div>
+    <div class="api-row">
+      <input class="api-input" id="apiKey" type="password" placeholder="貼上你的 sk-ant-... 金鑰">
+      <button class="api-btn" onclick="testApiKey()">驗證</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--text2);user-select:none">
+        <input type="checkbox" id="rememberKey" style="accent-color:var(--purple);width:15px;height:15px;cursor:pointer"> 記住 API Key（存在此瀏覽器）
+      </label>
+      <button id="forgetBtn" onclick="forgetKey()" style="display:none;font-size:11px;color:var(--red);background:none;border:1px solid var(--red-border);border-radius:6px;padding:2px 10px;cursor:pointer;font-family:inherit">清除已儲存的 Key</button>
+    </div>
+    <div class="api-status" id="apiStatus"></div>
+  </div>
+
+  <!-- Status Bar -->
+  <div class="status-bar" id="statusBar"></div>
+
+  <!-- Input -->
+  <div class="input-area" style="margin-bottom:16px">
+    <textarea id="taskInput" rows="3" placeholder="試試看：比較 LangGraph 和 CrewAI 兩個 Agent 框架，分析優缺點並推薦適合初學者的選擇"></textarea>
+    <div class="btn-row">
+      <button class="btn-main" id="runBtn" onclick="run()" disabled>🚀 啟動 Agent</button>
+      <button class="btn-stop" id="stopBtn" onclick="stop()" style="display:none">⏹ 停止</button>
+      <button class="btn-secondary" id="resetBtn" onclick="reset()" style="display:none">重置</button>
+    </div>
+  </div>
+
+  <!-- Features -->
+  <div class="features" id="features">
+    <div class="feature-card"><div class="icon">🌐</div><div class="label">即時網路搜尋</div><div class="desc">Agent 自主搜尋最新資料</div></div>
+    <div class="feature-card"><div class="icon">🔄</div><div class="label">ReAct 迴圈</div><div class="desc">想→做→看→再想</div></div>
+    <div class="feature-card"><div class="icon">🛡️</div><div class="label">自我修正</div><div class="desc">失敗自動重試</div></div>
+    <div class="feature-card"><div class="icon">👁️</div><div class="label">透明推理</div><div class="desc">每步思考都可見</div></div>
+  </div>
+
+  <!-- Error -->
+  <div class="error-banner" id="errorBanner" style="display:none"></div>
+
+  <!-- Log -->
+  <div class="log-section" id="logSection" style="display:none">
+    <div class="log-title">Agent reasoning trace</div>
+    <div class="log-scroll" id="logScroll"></div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats" id="statsSection" style="display:none"></div>
+
+  <!-- Final Result -->
+  <div id="finalSection" style="display:none"></div>
+</div>
+
+<script>
+const AGENTS = {
+  supervisor: { name: 'Supervisor', icon: '🧠', color: 'var(--purple)', bg: 'var(--purple-bg)', border: 'var(--purple-border)',
+    system: '你是多Agent系統的主管。收到任務後，分析需要哪些子任務並分配給Agent。\n可用Agent：researcher（搜尋資料）、writer（撰寫內容）、analyst（分析建議）。\n限制：最多分配 2 個子任務。\n必須只回覆JSON（不要加markdown標記、不要加任何前後文字）：\n{"plan":[{"agent":"researcher","task":"具體描述","needs_search":true}],"reasoning":"一句話說明"}' },
+  researcher: { name: 'Researcher', icon: '🔍', color: 'var(--teal)', bg: 'var(--teal-bg)', border: 'var(--teal-border)',
+    system: '你是研究員Agent，擁有網路搜尋工具。主動使用web_search查找最新資訊，整理成重點條列。回覆控制在300字以內。用繁體中文。' },
+  writer: { name: 'Writer', icon: '✍️', color: 'var(--coral)', bg: 'var(--coral-bg)', border: 'var(--coral-border)',
+    system: '你是寫作Agent。根據提供的資料撰寫結構清晰的內容。回覆控制在400字以內。用繁體中文。' },
+  analyst: { name: 'Analyst', icon: '📊', color: 'var(--blue)', bg: 'var(--blue-bg)', border: 'var(--blue-border)',
+    system: '你是分析師Agent。根據資料進行分析、比較方案、給出建議。回覆控制在400字以內。用繁體中文。' },
+  integrator: { name: 'Integrator', icon: '🎯', color: 'var(--purple)', bg: 'var(--purple-bg)', border: 'var(--purple-border)',
+    system: '你是整合Agent。根據所有Agent的成果產出最終回覆。去除重複，整合精華，結構清晰。回覆控制在500字以內。用繁體中文。' }
+};
+
+let aborted = false;
+let apiKeyValid = false;
+
+function getKey() { return document.getElementById('apiKey').value.trim(); }
+
+async function callClaude(system, userMsg, useSearch) {
+  const body = { model: 'claude-sonnet-4-20250514', max_tokens: 2048, system, messages: [{ role: 'user', content: userMsg }] };
+  if (useSearch) body.tools = [{ type: 'web_search_20250305', name: 'web_search' }];
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': getKey(), 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error('API ' + res.status + ': ' + (await res.text()).slice(0, 200));
+  const data = await res.json();
+  let text = '', searchUsed = false, citations = [];
+  if (!Array.isArray(data.content)) return { text: String(data.content || ''), searchUsed: false, citations: [] };
+  for (const b of data.content) {
+    if (b.type === 'text') text += b.text || '';
+    if (b.type === 'web_search_tool_result') {
+      searchUsed = true;
+      try { for (const r of (b.content || [])) { if (r.type === 'web_search_result' && r.url) citations.push({ title: r.title || r.url, url: r.url }); } } catch(e) {}
+    }
+  }
+  return { text: text || '(無回覆)', searchUsed, citations };
+}
+
+async function testApiKey() {
+  const status = document.getElementById('apiStatus');
+  const section = document.getElementById('apiSection');
+  if (!getKey()) { status.textContent = '請先貼上 API key'; status.className = 'api-status error'; return; }
+  status.textContent = '驗證中...'; status.className = 'api-status';
+  try {
+    await callClaude('Reply OK', 'test', false);
+    status.textContent = '✅ 連線成功！可以開始使用了';
+    status.className = 'api-status';
+    section.classList.add('connected');
+    apiKeyValid = true;
+    document.getElementById('runBtn').disabled = false;
+    // Save if remember is checked
+    if (document.getElementById('rememberKey').checked) {
+      try { localStorage.setItem('claude_api_key', getKey()); } catch(e) {}
+    }
+    document.getElementById('forgetBtn').style.display = document.getElementById('rememberKey').checked ? '' : 'none';
+  } catch (e) {
+    status.textContent = '❌ 驗證失敗：' + e.message.slice(0, 100);
+    status.className = 'api-status error';
+    apiKeyValid = false;
+  }
+}
+
+function forgetKey() {
+  try { localStorage.removeItem('claude_api_key'); } catch(e) {}
+  document.getElementById('apiKey').value = '';
+  document.getElementById('rememberKey').checked = false;
+  document.getElementById('forgetBtn').style.display = 'none';
+  document.getElementById('apiStatus').textContent = '已清除儲存的 Key';
+  document.getElementById('apiStatus').className = 'api-status';
+  document.getElementById('apiSection').classList.remove('connected');
+  apiKeyValid = false;
+  document.getElementById('runBtn').disabled = true;
+}
+
+function loadSavedKey() {
+  try {
+    const saved = localStorage.getItem('claude_api_key');
+    if (saved) {
+      document.getElementById('apiKey').value = saved;
+      document.getElementById('rememberKey').checked = true;
+      document.getElementById('forgetBtn').style.display = '';
+      // Auto-verify
+      testApiKey();
+    }
+  } catch(e) {}
+}
+
+function renderStatusBar() {
+  const bar = document.getElementById('statusBar');
+  bar.innerHTML = Object.entries(AGENTS).map(([id, a]) =>
+    `<div class="status-pill" id="sp-${id}" data-state="idle"><span class="dot"></span>${a.icon} ${a.name}</div>`
+  ).join('');
+}
+
+function setStatus(id, state) {
+  const el = document.getElementById('sp-' + id);
+  if (el) el.setAttribute('data-state', state);
+}
+
+function addLog(type, agentId, message, opts = {}) {
+  const section = document.getElementById('logSection');
+  const scroll = document.getElementById('logScroll');
+  section.style.display = '';
+  const a = AGENTS[agentId];
+  const icons = { think: '💭', tool: '🔧', result: '📋', error: '⚠️', plan: '📐', search: '🌐', retry: '🔄', done: '✅' };
+  const labels = { think: '推理', tool: '工具', result: '結果', error: '錯誤', plan: '計劃', search: '搜尋', retry: '重試', done: '完成' };
+
+  let citHtml = '';
+  if (opts.citations && opts.citations.length) {
+    citHtml = '<div class="citations">' + opts.citations.slice(0, 3).map(c =>
+      `<a class="cite-link" href="${c.url}" target="_blank">📎 ${(c.title || '').slice(0, 35)}</a>`
+    ).join('') + '</div>';
+  }
+
+  scroll.insertAdjacentHTML('beforeend', `
+    <div class="log-entry log-${type}">
+      <div class="log-icon">${icons[type] || '📋'}</div>
+      <div class="log-body">
+        <div class="log-meta">
+          ${a ? `<span class="agent-tag" style="background:${a.bg};color:${a.color};border:1px solid ${a.border}">${a.icon} ${a.name}</span>` : ''}
+          <span class="type-tag">${labels[type] || type}</span>
+          ${opts.loop ? `<span class="loop-tag">Loop ${opts.loop}</span>` : ''}
+        </div>
+        <div class="log-text">${escHtml(message)}</div>
+        ${citHtml}
+      </div>
+    </div>
+  `);
+  scroll.scrollTop = scroll.scrollHeight;
+}
+
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+async function runAgent(agentId, task, context) {
+  const agent = AGENTS[agentId];
+  const useSearch = agentId === 'researcher' || agentId === 'analyst';
+  let fullResult = '', allCitations = [], loops = 0, searches = 0;
+  const maxLoops = useSearch ? 2 : 1;
+
+  for (let loop = 1; loop <= maxLoops; loop++) {
+    if (aborted) break;
+    loops = loop;
+    setStatus(agentId, 'thinking');
+    addLog('think', agentId, loop === 1
+      ? '開始處理：' + task.slice(0, 120) + (task.length > 120 ? '...' : '')
+      : '第 ' + loop + ' 輪：檢查是否需要補充資料...', { loop });
+
+    const prompt = loop === 1
+      ? task + (context ? '\n\n【其他Agent的成果供參考】：\n' + context : '')
+      : '你上一輪的初步回覆：\n' + fullResult.slice(0, 800) + '\n\n如果已足夠完整，回覆「TASK_COMPLETE」。否則繼續補充。';
+
+    try {
+      if (useSearch) setStatus(agentId, 'searching');
+      const result = await callClaude(agent.system, prompt, useSearch);
+
+      if (result.searchUsed) {
+        searches++;
+        addLog('search', agentId, '使用了網路搜尋，找到 ' + result.citations.length + ' 個來源', { loop, citations: result.citations });
+        allCitations = [...allCitations, ...result.citations];
+      }
+      if (result.text.includes('TASK_COMPLETE') && loop > 1) {
+        addLog('done', agentId, 'Agent 判斷資訊已足夠', { loop });
+        break;
+      }
+      fullResult = loop === 1 ? result.text : fullResult + '\n\n---補充---\n' + result.text;
+      addLog('result', agentId, result.text.slice(0, 250) + (result.text.length > 250 ? '\n...' : ''), { loop });
+      if (!result.searchUsed && loop >= 2) break;
+    } catch (err) {
+      addLog('error', agentId, '錯誤：' + err.message, { loop });
+      if (loop < maxLoops) { addLog('retry', agentId, '自動重試中...', { loop }); await new Promise(r => setTimeout(r, 1000)); continue; }
+      if (!fullResult) fullResult = '(' + agent.name + ' 執行時發生錯誤：' + err.message + ')';
+      break;
+    }
+  }
+  setStatus(agentId, 'done');
+  return { text: fullResult, citations: allCitations, loops, searches };
+}
+
+async function run() {
+  const input = document.getElementById('taskInput').value.trim();
+  if (!input || !apiKeyValid) return;
+  aborted = false;
+
+  document.getElementById('runBtn').style.display = 'none';
+  document.getElementById('stopBtn').style.display = '';
+  document.getElementById('resetBtn').style.display = '';
+  document.getElementById('features').style.display = 'none';
+  document.getElementById('errorBanner').style.display = 'none';
+  document.getElementById('logScroll').innerHTML = '';
+  document.getElementById('statsSection').style.display = 'none';
+  document.getElementById('statsSection').innerHTML = '';
+  document.getElementById('finalSection').style.display = 'none';
+  document.getElementById('finalSection').innerHTML = '';
+  document.getElementById('taskInput').disabled = true;
+  renderStatusBar();
+
+  const startTime = Date.now();
+  let totalLoops = 0, totalSearches = 0;
+
+  try {
+    // Phase 1: Supervisor
+    setStatus('supervisor', 'thinking');
+    addLog('think', 'supervisor', '分析任務，制定執行計劃...');
+    const { text: planRaw } = await callClaude(AGENTS.supervisor.system, input, false);
+    setStatus('supervisor', 'done');
+
+    let plan;
+    try {
+      const match = planRaw.match(/\{[\s\S]*\}/);
+      plan = JSON.parse(match ? match[0] : planRaw);
+    } catch { plan = { plan: [{ agent: 'researcher', task: input, needs_search: true }], reasoning: '直接交由研究員處理' }; }
+    if (!Array.isArray(plan.plan)) plan.plan = [{ agent: 'researcher', task: input, needs_search: true }];
+    plan.plan = plan.plan.slice(0, 2);
+
+    addLog('plan', 'supervisor',
+      (plan.reasoning || '已拆解任務') + '\n\n📋 子任務：\n' +
+      plan.plan.map((p, i) => (i+1) + '. [' + (AGENTS[p.agent]?.icon || '?') + ' ' + (AGENTS[p.agent]?.name || p.agent) + '] ' + p.task).join('\n'));
+
+    // Phase 2: Execute agents
+    const results = {};
+    for (const step of plan.plan) {
+      if (aborted) break;
+      const aid = step.agent;
+      if (!AGENTS[aid] || aid === 'supervisor' || aid === 'integrator') continue;
+      const ctx = Object.entries(results).map(([k, v]) => '【' + AGENTS[k]?.name + '】:\n' + v.text.slice(0, 600)).join('\n---\n');
+      const result = await runAgent(aid, step.task, ctx);
+      results[aid] = result;
+      totalLoops += result.loops;
+      totalSearches += result.searches;
+    }
+    if (aborted) { finish(); return; }
+
+    // Phase 3: Integrate
+    setStatus('integrator', 'thinking');
+    addLog('think', 'integrator', '整合所有 Agent 的成果...');
+    const allRes = Object.entries(results).map(([k, v]) => '【' + AGENTS[k]?.name + ' 的成果】:\n' + v.text).join('\n\n---\n\n');
+    const { text: final } = await callClaude(AGENTS.integrator.system, '原始任務：' + input + '\n\n各Agent成果：\n' + allRes + '\n\n請整合出完整的最終回覆。', false);
+    setStatus('integrator', 'done');
+    addLog('done', 'integrator', '整合完成！');
+
+    // Stats
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    const agentCount = Object.keys(results).length + 2;
+    const statsEl = document.getElementById('statsSection');
+    statsEl.style.display = '';
+    statsEl.innerHTML = [
+      { icon: '⏱️', val: elapsed + 's', label: '耗時' },
+      { icon: '🤖', val: agentCount, label: 'Agent 數' },
+      { icon: '🔄', val: totalLoops, label: '推理輪數' },
+      { icon: '🌐', val: totalSearches, label: '搜尋次數' },
+    ].map(s => `<div class="stat-card"><div class="stat-icon">${s.icon}</div><div class="stat-val">${s.val}</div><div class="stat-label">${s.label}</div></div>`).join('');
+
+    // Final result
+    const finalEl = document.getElementById('finalSection');
+    finalEl.style.display = '';
+    finalEl.innerHTML = `<div class="final-result"><div class="final-header"><span style="font-size:18px">🎯</span><span>最終整合結果</span></div><div class="final-body">${escHtml(final)}</div></div>`;
+
+  } catch (e) {
+    document.getElementById('errorBanner').style.display = '';
+    document.getElementById('errorBanner').textContent = '⚠️ ' + e.message;
+    addLog('error', 'supervisor', '系統錯誤：' + e.message);
+  } finally {
+    finish();
+  }
+}
+
+function finish() {
+  document.getElementById('runBtn').style.display = '';
+  document.getElementById('stopBtn').style.display = 'none';
+  document.getElementById('taskInput').disabled = false;
+}
+
+function stop() { aborted = true; }
+
+function reset() {
+  aborted = true;
+  document.getElementById('taskInput').value = '';
+  document.getElementById('taskInput').disabled = false;
+  document.getElementById('logScroll').innerHTML = '';
+  document.getElementById('logSection').style.display = 'none';
+  document.getElementById('statsSection').style.display = 'none';
+  document.getElementById('statsSection').innerHTML = '';
+  document.getElementById('finalSection').style.display = 'none';
+  document.getElementById('finalSection').innerHTML = '';
+  document.getElementById('errorBanner').style.display = 'none';
+  document.getElementById('features').style.display = '';
+  document.getElementById('resetBtn').style.display = 'none';
+  document.getElementById('runBtn').style.display = '';
+  document.getElementById('stopBtn').style.display = 'none';
+  renderStatusBar();
+}
+
+// Init
+renderStatusBar();
+document.getElementById('apiKey').addEventListener('keydown', e => { if (e.key === 'Enter') testApiKey(); });
+document.getElementById('taskInput').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) run(); });
+document.getElementById('rememberKey').addEventListener('change', function() {
+  if (!this.checked) { try { localStorage.removeItem('claude_api_key'); } catch(e) {} document.getElementById('forgetBtn').style.display = 'none'; }
+  else if (apiKeyValid) { try { localStorage.setItem('claude_api_key', getKey()); } catch(e) {} document.getElementById('forgetBtn').style.display = ''; }
+});
+loadSavedKey();
+</script>
+</body>
+</html>
